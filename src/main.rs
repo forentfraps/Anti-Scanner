@@ -1,10 +1,13 @@
-use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
+use pcap;
+use pnet::datalink::{self, NetworkInterface};
+use pnet::packet::ethernet::EtherTypes;
+use pnet::packet::ethernet::EthernetPacket;
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::tcp::TcpPacket;
-use pnet::packet::{ethernet::EthernetPacket, Packet};
+use pnet::packet::udp::UdpPacket;
+use pnet::packet::Packet;
 use std::env;
-
 #[cfg(target_family = "unix")]
 fn has_root_permissions() -> bool {
     nix::unistd::geteuid().is_root()
@@ -13,7 +16,7 @@ fn has_root_permissions() -> bool {
 #[cfg(target_os = "windows")]
 fn has_admin_permissions() -> bool {
     use std::ptr;
-    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+
     use winapi::um::processthreadsapi::OpenProcessToken;
     use winapi::um::securitybaseapi;
     use winapi::um::winnt::{HANDLE, TOKEN_ELEVATION, TOKEN_QUERY};
@@ -97,27 +100,65 @@ fn main() {
     };
 
     // Create a new channel to capture packets
-    let (_tx, mut rx) = match datalink::channel(&interface, Default::default()) {
-        Ok(datalink::Channel::Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => panic!("Unhandled channel type"),
-        Err(e) => panic!(
-            "An error occurred when creating the datalink channel: {}",
-            e
-        ),
+    let interface_name: &str = &(interface.name);
+    let mut cap = match pcap::Capture::from_device(interface_name)
+        .unwrap()
+        .promisc(true) // Set the capture mode to promiscuous
+        .snaplen(5000) // Set the maximum bytes to capture per packet
+        .open()
+    {
+        Ok(cap) => cap,
+        Err(e) => {
+            eprintln!("Error setting up the capture: {:?}", e);
+            std::process::exit(0);
+        }
     };
-
-    loop {
-        match rx.next() {
-            Ok(raw_packet) => {
-                let packet = EthernetPacket::new(raw_packet).unwrap();
-
-                // This is where you would typically filter packets based on their type or perform
-                // any specific action you need. Since we're making this a "catch-all", we'll
-                // simply print out basic packet info.
-                println!("Received a packet: {:?}", packet);
-            }
-            Err(e) => {
-                eprintln!("An error occurred while reading: {}", e);
+    while let Ok(packet) = cap.next() {
+        // Parse the Ethernet frame from the captured packet data
+        if let Some(ethernet_packet) = EthernetPacket::new(&packet.data) {
+            match ethernet_packet.get_ethertype() {
+                EtherTypes::Ipv4 => {
+                    if let Some(ipv4_packet) = Ipv4Packet::new(ethernet_packet.payload()) {
+                        // Check if the packet is TCP
+                        match ipv4_packet.get_next_level_protocol() {
+                            IpNextHeaderProtocols::Tcp => {
+                                // Handle TCP packets
+                                let tcp_packet = TcpPacket::new(ipv4_packet.payload());
+                                if let Some(tcp_packet) = tcp_packet {
+                                    println!(
+                                        "TCP Packet: {}:{} > {}:{}; Seq: {}, Ack: {}",
+                                        ethernet_packet.get_source(),
+                                        tcp_packet.get_source(),
+                                        ethernet_packet.get_destination(),
+                                        tcp_packet.get_destination(),
+                                        tcp_packet.get_sequence(),
+                                        tcp_packet.get_acknowledgement()
+                                    );
+                                }
+                            }
+                            IpNextHeaderProtocols::Udp => {
+                                // Handle UDP packets
+                                let udp_packet = UdpPacket::new(ethernet_packet.payload());
+                                if let Some(udp_packet) = udp_packet {
+                                    println!(
+                                        "UDP Packet: {}:{} > {}:{}; Len: {}",
+                                        ethernet_packet.get_source(),
+                                        udp_packet.get_source(),
+                                        ethernet_packet.get_destination(),
+                                        udp_packet.get_destination(),
+                                        udp_packet.get_length()
+                                    );
+                                }
+                            }
+                            _ => {
+                                println!("protocol is {:?}", ipv4_packet.get_next_level_protocol());
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    println!("ether type is {:?}", ethernet_packet.get_ethertype())
+                }
             }
         }
     }

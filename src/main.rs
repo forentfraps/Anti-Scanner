@@ -1,8 +1,7 @@
 use core::net::Ipv4Addr;
 use pcap;
 use pnet::datalink::{self, NetworkInterface};
-use pnet::packet::ethernet::EtherTypes;
-use pnet::packet::ethernet::EthernetPacket;
+use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::tcp::TcpPacket;
@@ -12,7 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process::Command;
 
-#[feature(ip_in_core)]
 const ALLOWED_AMOUNT_OF_PORTS: usize = 25;
 
 fn block_ip_win(ip: &str) {
@@ -40,7 +38,7 @@ fn block_ip_win(ip: &str) {
         eprintln!(
             "Error blocking IP {}: {}",
             ip,
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&output.stdout)
         );
     }
     let output = Command::new("netsh")
@@ -66,7 +64,7 @@ fn block_ip_win(ip: &str) {
         eprintln!(
             "Error blocking IP {}: {}",
             ip,
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&output.stdout)
         );
     }
 }

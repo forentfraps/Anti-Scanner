@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process::Command;
 
-const ALLOWED_AMOUNT_OF_PORTS: usize = 25;
+const ALLOWED_AMOUNT_OF_PORTS: usize = 20;
 
 fn block_ip_win(ip: &str) {
     // Construct the netsh command to add a firewall rule
@@ -208,19 +208,19 @@ fn main() {
     let interface_names_match = |iface: &NetworkInterface| iface.index == interface_index;
 
     let interfaces = datalink::interfaces();
-    // Find the network interface with the provided name
     let interface = match interfaces.into_iter().find(interface_names_match) {
         Some(_interface) => _interface,
         None => fail_start(),
     };
 
-    // Create a new channel to capture packets
     let interface_name: &str = &(interface.name);
     let host_ip = interface.ips[0].ip();
     let mut cap = match pcap::Capture::from_device(interface_name)
         .unwrap()
-        .promisc(true) // Set the capture mode to promiscuous
-        .snaplen(5000) // Set the maximum bytes to capture per packet
+        .promisc(true)
+        .snaplen(5000)
+        .immediate_mode(true)
+        .timeout(100)
         .open()
     {
         Ok(cap) => cap,
@@ -231,63 +231,52 @@ fn main() {
     };
     let mut hs = HashSet::new();
     let mut hm = HashMap::new();
-    while let Ok(packet) = cap.next() {
-        // Parse the Ethernet frame from the captured packet data
-        if let Some(ethernet_packet) = EthernetPacket::new(&packet.data) {
-            match ethernet_packet.get_ethertype() {
-                EtherTypes::Ipv4 => {
-                    if let Some(ipv4_packet) = Ipv4Packet::new(ethernet_packet.payload()) {
-                        // Check if the packet is TCP
-                        match ipv4_packet.get_next_level_protocol() {
-                            IpNextHeaderProtocols::Tcp => {
-                                // Handle TCP packets
-                                let tcp_packet = TcpPacket::new(ipv4_packet.payload());
-                                if let Some(tcp_packet) = tcp_packet {
-                                    // println!(
-                                    //     "TCP Packet: From {} To {} {}:{} > {}:{}; Seq: {}, Ack: {}",
-                                    //     ipv4_packet.get_source(),
-                                    //     ipv4_packet.get_destination(),
-                                    //     ethernet_packet.get_source(),
-                                    //     tcp_packet.get_source(),
-                                    //     ethernet_packet.get_destination(),
-                                    //     tcp_packet.get_destination(),
-                                    //     tcp_packet.get_sequence(),
-                                    //     tcp_packet.get_acknowledgement()
-                                    // );
-                                    if ipv4_packet.get_destination() == host_ip {
-                                        catalog_packet(
-                                            &mut hm,
-                                            &mut hs,
-                                            ipv4_packet.get_source().to_string(),
-                                            tcp_packet.get_source(),
-                                        )
+    loop {
+        match cap.next() {
+            Ok(packet) => {
+                if let Some(ethernet_packet) = EthernetPacket::new(&packet.data) {
+                    match ethernet_packet.get_ethertype() {
+                        EtherTypes::Ipv4 => {
+                            if let Some(ipv4_packet) = Ipv4Packet::new(ethernet_packet.payload()) {
+                                match ipv4_packet.get_next_level_protocol() {
+                                    IpNextHeaderProtocols::Tcp => {
+                                        let tcp_packet = TcpPacket::new(ipv4_packet.payload());
+                                        if let Some(tcp_packet) = tcp_packet {
+                                            if ipv4_packet.get_destination() == host_ip {
+                                                catalog_packet(
+                                                    &mut hm,
+                                                    &mut hs,
+                                                    ipv4_packet.get_source().to_string(),
+                                                    tcp_packet.get_destination(),
+                                                )
+                                            }
+                                        }
                                     }
-                                }
-                            }
-                            IpNextHeaderProtocols::Udp => {
-                                // Handle UDP packets
-                                let udp_packet = UdpPacket::new(ethernet_packet.payload());
-                                if let Some(udp_packet) = udp_packet {
-                                    if ipv4_packet.get_destination() == host_ip {
-                                        catalog_packet(
-                                            &mut hm,
-                                            &mut hs,
-                                            ipv4_packet.get_source().to_string(),
-                                            udp_packet.get_source(),
-                                        );
+                                    IpNextHeaderProtocols::Udp => {
+                                        let udp_packet = UdpPacket::new(ethernet_packet.payload());
+                                        if let Some(udp_packet) = udp_packet {
+                                            if ipv4_packet.get_destination() == host_ip {
+                                                catalog_packet(
+                                                    &mut hm,
+                                                    &mut hs,
+                                                    ipv4_packet.get_source().to_string(),
+                                                    udp_packet.get_destination(),
+                                                );
+                                            }
+                                        }
                                     }
+                                    _ => {}
                                 }
-                            }
-                            _ => {
-                                //println!("protocol is {:?}", ipv4_packet.get_next_level_protocol());
                             }
                         }
+                        _ => {}
                     }
                 }
-                _ => {
-                    // println!("ether type is {:?}", ethernet_packet.get_ethertype())
-                }
             }
+            Err(e) => match e {
+                pcap::Error::TimeoutExpired => {}
+                _ => println!("Unknown error while parsing packets: {:?}", e),
+            },
         }
     }
 }

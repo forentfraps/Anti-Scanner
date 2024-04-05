@@ -68,8 +68,7 @@ fn block_ip_win(ip: &str) {
     }
 }
 fn block_ip_unix(ip: &str) {
-    let status = Command::new("sudo")
-        .arg("iptables")
+    let status = Command::new("iptables")
         .arg("-A")
         .arg("INPUT")
         .arg("-s")

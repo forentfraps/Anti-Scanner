@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process::Command;
 
+#[feature(ip_in_core)]
 const ALLOWED_AMOUNT_OF_PORTS: usize = 25;
 
 fn block_ip_win(ip: &str) {

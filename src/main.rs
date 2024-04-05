@@ -1,4 +1,3 @@
-use core::net::Ipv4Addr;
 use pcap;
 use pnet::datalink::{self, NetworkInterface};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
@@ -160,20 +159,20 @@ fn has_elevated_permissions() -> bool {
 }
 
 fn catalog_packet(
-    hm: &mut HashMap<Ipv4Addr, HashSet<u16>>,
-    hs: &mut HashSet<Ipv4Addr>,
-    ip: &Ipv4Addr,
+    hm: &mut HashMap<String, HashSet<u16>>,
+    hs: &mut HashSet<String>,
+    ip: String,
     port: u16,
 ) {
-    let mut ports_list = match hm.get_mut(ip) {
+    let mut ports_list = match hm.get_mut(&ip) {
         Some(vec) => vec,
         None => {
             hm.insert(ip.clone(), HashSet::new());
-            hm.get_mut(ip).unwrap()
+            hm.get_mut(&ip).unwrap()
         }
     };
     ports_list.insert(port);
-    if ports_list.len() > ALLOWED_AMOUNT_OF_PORTS && !hs.contains(ip) {
+    if ports_list.len() > ALLOWED_AMOUNT_OF_PORTS && !hs.contains(&ip) {
         block_ip(&(ip.to_string()));
         hs.insert(ip.clone());
     }
@@ -259,7 +258,7 @@ fn main() {
                                         catalog_packet(
                                             &mut hm,
                                             &mut hs,
-                                            &ipv4_packet.get_source(),
+                                            ipv4_packet.get_source().to_string(),
                                             tcp_packet.get_source(),
                                         )
                                     }
@@ -273,7 +272,7 @@ fn main() {
                                         catalog_packet(
                                             &mut hm,
                                             &mut hs,
-                                            &ipv4_packet.get_source(),
+                                            ipv4_packet.get_source().to_string(),
                                             udp_packet.get_source(),
                                         );
                                     }

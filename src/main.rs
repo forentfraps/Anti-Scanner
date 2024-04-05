@@ -12,20 +12,21 @@ use std::process::Command;
 
 const ALLOWED_AMOUNT_OF_PORTS: usize = 20;
 
+
+#[cfg(target_os = "windows")]
 fn block_ip_win(ip: &str) {
-    // Construct the netsh command to add a firewall rule
     let output = Command::new("netsh")
         .args(&[
             "advfirewall",
             "firewall",
             "add",
             "rule",
-            "name=AntiScanner Blocked IP TCP", // Unique name for the rule
-            &format!("remoteip={}", ip),       // The IP address to block
-            "dir=in",                          // Direction: in = inbound, out = outbound
-            "action=block",                    // Block the matching traffic
-            "protocol=TCP", // Specify the protocol (optional, based on your needs)
-            "enable=yes",   // Enable the rule
+            "name=AntiScanner Blocked IP TCP",
+            &format!("remoteip={}", ip),
+            "dir=in",
+            "action=block",
+            "protocol=TCP",
+            "enable=yes",
         ])
         .output()
         .expect("Failed to execute command");
@@ -33,7 +34,6 @@ fn block_ip_win(ip: &str) {
     if output.status.success() {
         println!("IP {} successfully blocked TCP.", ip);
     } else {
-        // Print the error output from the command for debugging
         eprintln!(
             "Error blocking IP {}: {}",
             ip,
@@ -46,12 +46,12 @@ fn block_ip_win(ip: &str) {
             "firewall",
             "add",
             "rule",
-            "name=AntiScanner Blocked IP UDP", // Unique name for the rule
-            &format!("remoteip={}", ip),       // The IP address to block
-            "dir=in",                          // Direction: in = inbound, out = outbound
-            "action=block",                    // Block the matching traffic
-            "protocol=UDP", // Specify the protocol (optional, based on your needs)
-            "enable=yes",   // Enable the rule
+            "name=AntiScanner Blocked IP UDP",
+            &format!("remoteip={}", ip),
+            "dir=in",
+            "action=block",
+            "protocol=UDP",
+            "enable=yes",
         ])
         .output()
         .expect("Failed to execute command");
@@ -59,7 +59,6 @@ fn block_ip_win(ip: &str) {
     if output.status.success() {
         println!("IP {} successfully blocked UDP.", ip);
     } else {
-        // Print the error output from the command for debugging
         eprintln!(
             "Error blocking IP {}: {}",
             ip,
@@ -67,6 +66,8 @@ fn block_ip_win(ip: &str) {
         );
     }
 }
+
+#[cfg(target_family = "unix")]
 fn block_ip_unix(ip: &str) {
     let status = Command::new("iptables")
         .arg("-A")
@@ -156,7 +157,7 @@ fn has_elevated_permissions() -> bool {
         false // Or some default behavior for other platforms
     }
 }
-
+#[allow(unused_mut)]
 fn catalog_packet(
     hm: &mut HashMap<String, HashSet<u16>>,
     hs: &mut HashSet<String>,
